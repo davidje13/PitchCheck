@@ -81,20 +81,10 @@ function requestDebug() {
 async function run() {
 	const minHz = noteToHz('A', 1, -50);
 	const maxHz = noteToHz('A', 7, 50);
+	const minDb = -85;
+	const maxDb = 10;
 
-	const centsOut = document.getElementById('cents');
-	const noteOut = document.getElementById('note');
-	const noteNameOut = document.getElementById('note-name');
-	const noteSharpOut = document.getElementById('note-sharp');
-	const noteOctaveOut = document.getElementById('note-octave');
-	const hzOut = document.getElementById('hz');
-	const dbOut = document.getElementById('db');
-	const plotCtx = document.getElementById('plot').getContext('2d');
-
-	const highsOut = [...document.getElementById('err-high').children].reverse();
-	const lowsOut = [...document.getElementById('err-low').children];
-	highsOut.forEach((o, i) => o.style.width = `${i / (highsOut.length - 1) * 20 + 80}%`);
-	lowsOut.forEach((o, i) => o.style.width = `${i / (lowsOut.length - 1) * 20 + 80}%`);
+	const ui = new UI();
 
 	const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
 		.catch(requestDebug);
@@ -113,80 +103,123 @@ async function run() {
 		smoothingTimeConstant: 0.5,
 	});
 	audioSource.connect(analyserNode);
+
 	const hzConv = analyserNode.context.sampleRate / analyserNode.fftSize;
+	const data = new Float32Array(Math.ceil(Math.min(
+		maxHz * 1.1 / hzConv,
+		analyserNode.fftSize / 2,
+	)));
 
-	const data = new Float32Array(Math.ceil(maxHz / hzConv));
+	function refresh() {
+		analyserNode.getFloatFrequencyData(data);
+		const peak = getPeakDb(data);
+		const peakHz = peak.i * hzConv;
 
-	function updateError(cents) {
+		if (peak.db < minDb || peakHz < minHz || peakHz > maxHz) {
+			ui.showNote(null);
+			ui.showDecibels(null);
+		} else {
+			ui.showNote(peakHz);
+			ui.showDecibels(peak.db);
+		}
+		ui.showFrequencyDomain(data, hzConv, minHz, maxHz, minDb, maxDb);
+
+		requestAnimationFrame(refresh);
+	}
+
+	refresh();
+}
+
+class UI {
+	constructor() {
+		this.centsOut = document.getElementById('cents');
+		this.noteOut = document.getElementById('note');
+		this.noteNameOut = document.getElementById('note-name');
+		this.noteSharpOut = document.getElementById('note-sharp');
+		this.noteOctaveOut = document.getElementById('note-octave');
+		this.hzOut = document.getElementById('hz');
+		this.dbOut = document.getElementById('db');
+		this.plotCtx = document.getElementById('plot').getContext('2d');
+
+		this.highsOut = [...document.getElementById('err-high').children].reverse();
+		this.lowsOut = [...document.getElementById('err-low').children];
+		this.highsOut.forEach((o, i) => o.style.width = `${i / (this.highsOut.length - 1) * 20 + 80}%`);
+		this.lowsOut.forEach((o, i) => o.style.width = `${i / (this.lowsOut.length - 1) * 20 + 80}%`);
+	}
+
+	showError(cents) {
 		let diff;
 		if (cents === null) {
 			diff = 0;
-			centsOut.value = -50;
-			centsOut.textContent = 'no note';
+			this.centsOut.value = -50;
+			this.centsOut.textContent = 'no note';
 		} else {
 			diff = Math.round(cents);
-			centsOut.value = diff;
+			this.centsOut.value = diff;
 			if (diff === 0) {
-				centsOut.textContent = 'perfect';
+				this.centsOut.textContent = 'perfect';
 			} else {
-				centsOut.textContent = diff > 0
+				this.centsOut.textContent = diff > 0
 					? `+ ${diff} cent${diff === 1 ? '' : 's'}`
 					: `- ${-diff} cent${diff === -1 ? '' : 's'}`;
 			}
 		}
 		//noteOut.style.left = `${-diff}px`;
-		const nH = Math.max(0, Math.round(diff * highsOut.length / 50));
-		const nL = Math.max(0, Math.round(-diff * lowsOut.length / 50));
-		highsOut.forEach((o, i) => o.classList.toggle('active', i < nH));
-		lowsOut.forEach((o, i) => o.classList.toggle('active', i < nL));
-		noteOut.classList.toggle('perfect', cents !== null && (nH + nL === 0));
+		const nH = Math.max(0, Math.round(diff * this.highsOut.length / 50));
+		const nL = Math.max(0, Math.round(-diff * this.lowsOut.length / 50));
+		this.highsOut.forEach((o, i) => o.classList.toggle('active', i < nH));
+		this.lowsOut.forEach((o, i) => o.classList.toggle('active', i < nL));
+		this.noteOut.classList.toggle('perfect', cents !== null && (nH + nL === 0));
 	}
 
-	const MIN_DB = -85;
-	const MAX_DB = 10;
+	showNote(hz) {
+		let hzText = '-';
+		if (hz !== null) {
+			const note = noteFromHz(hz);
+			this.showError(note.cents);
+			this.noteNameOut.textContent = note.name.charAt(0);
+			this.noteSharpOut.hidden = !note.name.includes('#');
+			this.noteOctaveOut.textContent = note.octave.toFixed(0);
+			hzText = hz.toFixed(1);
+		} else {
+			this.showError(null);
+			this.noteNameOut.textContent = '-';
+			this.noteSharpOut.hidden = true;
+			this.noteOctaveOut.textContent = '';
+		}
+		this.hzOut.textContent = hzText.padStart(6, ' ');
+	}
 
-	function refresh() {
-		const w = plotCtx.canvas.width;
-		const h = plotCtx.canvas.height;
+	showDecibels(db) {
+		let dbText = '-';
+		if (db !== null) {
+			dbText = db.toFixed(2);
+		}
+		this.dbOut.textContent = dbText.padStart(7, ' ');
+	}
+
+	showFrequencyDomain(data, hzConv, minHz, maxHz, minDb, maxDb) {
+		const w = this.plotCtx.canvas.width;
+		const h = this.plotCtx.canvas.height;
 		const minPitch = Math.log2(minHz);
 		const maxPitch = Math.log2(maxHz);
-		analyserNode.getFloatFrequencyData(data);
-		plotCtx.clearRect(0, 0, w, h);
-		plotCtx.fillStyle = '#FFFFFF';
-		plotCtx.beginPath();
-		plotCtx.moveTo(-10, h);
-		const peak = getPeakDb(data);
-			for (let i = Math.floor(minHz / hzConv); i < data.length; ++i) {
-			plotCtx.lineTo(
-				(Math.log2(i * hzConv) - minPitch) * w / (maxPitch - minPitch),
-				Math.min(1, 1 - (data[i] - MIN_DB) / (MAX_DB - MIN_DB)) * h
+		const minI = Math.floor(minHz / hzConv);
+		const maxI = Math.min(data.length, Math.ceil(maxHz / hzConv));
+		const pitchScale = w / (maxPitch - minPitch);
+		const dbScale = h / (maxDb - minDb);
+		this.plotCtx.clearRect(0, 0, w, h);
+		this.plotCtx.fillStyle = '#FFFFFF';
+		this.plotCtx.beginPath();
+		this.plotCtx.moveTo(-10, h);
+		for (let i = minI; i < maxI; ++i) {
+			this.plotCtx.lineTo(
+				(Math.log2(i * hzConv) - minPitch) * pitchScale,
+				(maxDb - data[i]) * dbScale,
 			);
 		}
-		plotCtx.lineTo(w + 10, h);
-		plotCtx.fill();
-
-		if (peak.db < MIN_DB || peak.i < minHz / hzConv) {
-			updateError(null);
-			noteNameOut.textContent = '-';
-			noteSharpOut.hidden = true;
-			noteOctaveOut.textContent = '';
-			hzOut.textContent = '-'.padStart(6, ' ');
-			dbOut.textContent = '-'.padStart(7, ' ');
-		} else {
-			const peakHz = peak.i * hzConv;
-			const note = noteFromHz(peakHz);
-			updateError(note.cents);
-
-			noteNameOut.textContent = note.name.charAt(0);
-			noteSharpOut.hidden = !note.name.includes('#');
-			noteOctaveOut.textContent = note.octave.toFixed(0);
-			hzOut.textContent = peakHz.toFixed(1).padStart(6, ' ');
-			dbOut.textContent = peak.db.toFixed(2).padStart(7, ' ');
-		}
-		requestAnimationFrame(refresh);
+		this.plotCtx.lineTo(w + 10, h);
+		this.plotCtx.fill();
 	}
-
-	refresh();
 }
 
 window.addEventListener('DOMContentLoaded', run);
