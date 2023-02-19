@@ -1,0 +1,128 @@
+html, body {
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	line-height: 1;
+}
+
+body {
+	background: #333333;
+	color: #EEEEEE;
+	display: grid;
+	place-items: center;
+}
+
+main {
+	background: #111111;
+	border-radius: 32px;
+	box-shadow:
+		inset 0 70px 2px -30px rgba(255, 255, 255, 0.05),
+		inset 0 5px 10px 2px rgba(255, 255, 255, 0.2),
+		0 10px 20px rgba(0, 0, 0, 0.5);
+}
+
+main {
+	text-align: center;
+}
+
+h1 {
+	font: 2.5em serif;
+	margin: 16px 32px;
+	padding: 0;
+	color: #DDDDDD;
+}
+
+#note {
+	display: inline-grid;
+	place-items: center;
+	position: relative;
+	text-align: center;
+	font-size: 8em;
+	width: 1em;
+	height: 1em;
+	border-radius: 100%;
+	transition: box-shadow 0.1s linear;
+	z-index: 1;
+}
+
+#note.perfect {
+	box-shadow: 0 0 40px 0 #66CC33;
+	color: #AAFF88;
+}
+
+#note-name {
+	font: 1.2em monospace;
+	line-height: 1;
+	position: relative;
+	top: -0.03em;
+}
+
+#note-sharp {
+	font: 0.5em monospace;
+	position: absolute;
+	top: 0;
+	right: 0;
+}
+
+#note-octave {
+	font: 0.5em monospace;
+	position: absolute;
+	bottom: 0;
+	right: 0;
+}
+
+#err-high, #err-low {
+	width: 8em;
+	margin: -4px auto;
+}
+
+#err-high div, #err-low div {
+	margin: 2px auto;
+	height: 0.25em;
+	border-radius: 100px;
+	background: #000000;
+}
+
+#err-high div.active {
+	background: #FF8000;
+}
+
+#err-low div.active {
+	background: #0080FF;
+}
+
+#cents {
+	/* for screen-readers only */
+	position: absolute;
+	top: -100px;
+	height: 0;
+}
+
+#plot {
+	display: block;
+	margin: 24px auto 8px;
+	border-bottom: 1px solid #CCCCCC;
+	background: #222222;
+	border-top-left-radius: 4px;
+	border-top-right-radius: 4px;
+}
+
+.info {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	margin: 8px 16px 16px;
+}
+
+#hz, #db {
+	font: 1em monospace;
+	white-space: pre;
+}
+
+#hz::after {
+	content: "Hz";
+}
+
+#db::after {
+	content: "Db";
+}
