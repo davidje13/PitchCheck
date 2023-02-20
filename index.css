@@ -111,8 +111,8 @@ h1 {
 #cents {
 	/* for screen-readers only */
 	position: absolute;
-	top: -100px;
 	height: 0;
+	z-index: -1;
 }
 
 .details {
