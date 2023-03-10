@@ -25,7 +25,7 @@
 				</div>
 				<div id="note">
 					<span id="note-name">-</span>
-					<span id="note-sharp" aria-label="sharp" title="sharp" hidden>#</span>
+					<span id="note-sharp" aria-label="sharp" title="sharp" hidden>&#x266F;</span>
 					<span id="note-octave"></span>
 				</div>
 				<div id="err-low">
@@ -41,6 +41,20 @@
 					<div></div>
 				</div>
 			</div>
+			<div class="tuning">
+				<button data-note="A" data-octave="4">A</button>
+				<button data-note="A#" data-octave="4">A<sup>&#x266F;</sup></button>
+				<button data-note="B" data-octave="4">B</button>
+				<button data-note="C" data-octave="4">C</button>
+				<button data-note="C#" data-octave="4">C<sup>&#x266F;</sup></button>
+				<button data-note="D" data-octave="4">D</button>
+				<button data-note="D#" data-octave="4">D<sup>&#x266F;</sup></button>
+				<button data-note="E" data-octave="4">E</button>
+				<button data-note="F" data-octave="4">F</button>
+				<button data-note="F#" data-octave="4">F<sup>&#x266F;</sup></button>
+				<button data-note="G" data-octave="4">G</button>
+				<button data-note="G#" data-octave="4">G<sup>&#x266F;</sup></button>
+			</div>
 			<div class="details">
 				<meter id="cents" min="-50" low="0" optimum="0" high="0" max="50" value="-50">no note</meter>
 				<canvas id="plot" width="200" height="50"></canvas>
@@ -50,5 +64,6 @@
 				</div>
 			</div>
 		</main>
+		<footer><a href="https://github.com/davidje13/PitchCheck" target="_blank">GitHub</a></footer>
 	</body>
 </html>

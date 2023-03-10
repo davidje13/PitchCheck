@@ -112,7 +112,49 @@ h1 {
 	/* for screen-readers only */
 	position: absolute;
 	height: 0;
+	opacity: 0;
 	z-index: -1;
+}
+
+.tuning {
+	margin: 24px 0 0;
+	display: grid;
+	grid-template: repeat(2, 24px) / repeat(6, 1fr);
+	gap: 4px;
+	position: relative;
+}
+.tuning::before {
+	content: "\2442";
+	color: #BBBBBB;
+	position: absolute;
+	top: 50%;
+	left: -1em;
+	margin-top: -0.5em;
+	transform: scale(1, 2);
+}
+
+.tuning button {
+	margin: 0;
+	padding: 0 4px;
+	background: linear-gradient(to bottom, #222222, #111111);
+	color: #BBBBBB;
+	border: 1px solid #555555;
+	border-top-color: #888888;
+	border-radius: 4px;
+	cursor: pointer;
+	font: 0.8em sans-serif;
+}
+.tuning button sup {
+	font-size: 0.5em;
+	vertical-align: top;
+}
+
+.tuning button:focus:not(:active) {
+	border-color: #CCCCCC;
+}
+.tuning button:active {
+	background: linear-gradient(to bottom, #111111, #222222);
+	border-top-color: #666666;
 }
 
 .details {
@@ -123,7 +165,7 @@ h1 {
 	display: block;
 	box-sizing: border-box;
 	width: calc(100% - 16px);
-	margin: 24px auto 8px;
+	margin: 8px auto;
 	border-bottom: 1px solid #CCCCCC;
 	background: #222222;
 	border-top-left-radius: 4px;
@@ -148,4 +190,32 @@ h1 {
 
 #db::after {
 	content: "Db";
+}
+
+footer {
+	position: absolute;
+	top: 0;
+	right: 0;
+	padding: 8px 12px;
+	border-bottom-left-radius: 8px;
+	background: rgba(0, 0, 0, 0.5);
+	font: 0.8em sans-serif;
+}
+
+footer a:link, footer a:visited {
+	color: #0099FF;
+	text-decoration: none;
+	opacity: 0.8;
+}
+
+.debugHz {
+	position: absolute;
+	top: 8px;
+	left: 8px;
+}
+
+footer a:active, footer a:hover {
+	color: #0099FF;
+	text-decoration: underline;
+	opacity: 1;
 }

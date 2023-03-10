@@ -45,37 +45,61 @@ function getPeakDb(values) {
 }
 
 function getTestSource(audioContext) {
-	const audioSource = new OscillatorNode(audioContext, { frequency: noteToHz('C', 4) });
+	const audioSource = new OscillatorNode(audioContext, { frequency: 1e-2 });
 	audioSource.start();
 
 	const freqIn = document.createElement('input');
+	freqIn.className = 'debugHz';
+	freqIn.setAttribute('title', 'Debug frequency');
 	freqIn.setAttribute('type', 'number');
-	freqIn.setAttribute('min', '1');
+	freqIn.setAttribute('min', '0');
 	freqIn.setAttribute('max', '22050');
 	freqIn.setAttribute('step', '0.1');
-	freqIn.setAttribute('value', audioSource.frequency.value.toFixed(1));
+	freqIn.setAttribute('value', '0');
 	freqIn.addEventListener('input', () => {
-		audioSource.frequency.exponentialRampToValueAtTime(
-			Math.max(1, Number.parseFloat(freqIn.value)),
-			audioContext.currentTime + 0.1,
-		);
+		const value = Number.parseFloat(freqIn.value);
+		if (Number.isNaN(value) || value <= 0) {
+			audioSource.frequency.exponentialRampToValueAtTime(1e-2, audioContext.currentTime + 0.1);
+		} else {
+			audioSource.frequency.exponentialRampToValueAtTime(value, audioContext.currentTime + 0.1);
+		}
 	});
 	document.body.appendChild(freqIn);
 
 	return audioSource;
 }
 
-function requestDebug() {
-	return new Promise((resolve) => {
-		const btn = document.createElement('button');
-		btn.textContent = 'Run in test mode';
-		document.body.appendChild(btn);
-		const next = () => {
-			document.body.removeChild(btn);
-			resolve(null);
-		};
-		btn.addEventListener('click', next, { once: true });
+const playing = new Set();
+
+function silenceNotes(audioContext) {
+	const now = audioContext.currentTime;
+	playing.forEach(({ audioSource, gainNode }) => {
+		gainNode.gain.cancelAndHoldAtTime(now);
+		gainNode.gain.linearRampToValueAtTime(0, now + 0.1);
+		audioSource.stop(now + 0.1);
 	});
+	playing.clear();
+}
+
+function playNote(audioContext, frequency, { fadeIn = 0.02, life = 0.0, fadeOut = 1.0, gain = 1 } = {}) {
+	const audioSource = new OscillatorNode(audioContext, { frequency });
+	const gainNode = new GainNode(audioContext, { gain: 0 });
+	audioSource.connect(gainNode);
+	gainNode.connect(audioContext.destination);
+
+	const beginTime = audioContext.currentTime + 0.02;
+	gainNode.gain.linearRampToValueAtTime(gain * 1e-4, beginTime);
+	gainNode.gain.exponentialRampToValueAtTime(gain, beginTime + fadeIn);
+	gainNode.gain.linearRampToValueAtTime(gain, beginTime + fadeIn + life);
+	gainNode.gain.exponentialRampToValueAtTime(gain * 1e-4, beginTime + fadeIn + life + fadeOut);
+	gainNode.gain.linearRampToValueAtTime(0, beginTime + fadeIn + life + fadeOut + 0.02);
+
+	audioSource.start(beginTime);
+	audioSource.stop(beginTime + fadeIn + life + fadeOut + 0.02);
+
+	const playingItem = { audioSource, gainNode };
+	playing.add(playingItem);
+	setTimeout(() => playing.delete(playingItem), (beginTime + fadeIn + life + fadeOut) * 1000);
 }
 
 async function run() {
@@ -86,17 +110,35 @@ async function run() {
 
 	const ui = new UI();
 
+	let pendingNoteEvent = null;
 	const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-		.catch(requestDebug);
+		.catch(() => new Promise((resolve) => {
+			ui.addEventListener('playnote', (e) => {
+				pendingNoteEvent = e;
+				resolve(null);
+			}, { once: true });
+		}));
 	const audioContext = new AudioContext({
 		latencyHint: 'playback',
 		sampleRate: 44100,
-		sinkId: { type: 'none' },
 	});
 
 	const audioSource = mediaStream
-		? new MediaStreamAudioSourceNode(audioContext, { mediaStream: mediaStream })
+		? new MediaStreamAudioSourceNode(audioContext, { mediaStream })
 		: getTestSource(audioContext);
+
+	function handlePlayNote(e) {
+		silenceNotes(audioContext);
+		playNote(
+			audioContext,
+			noteToHz(e.detail.note, e.detail.octave),
+			{ fadeIn: 0.05, life: 5.0, fadeOut: 8.0, gain: 0.8 },
+		);
+	}
+	ui.addEventListener('playnote', handlePlayNote);
+	if (pendingNoteEvent) {
+		handlePlayNote(pendingNoteEvent);
+	}
 
 	const analyserNode = new AnalyserNode(audioContext, {
 		fftSize: 1024 * 8,
@@ -130,8 +172,9 @@ async function run() {
 	refresh();
 }
 
-class UI {
+class UI extends EventTarget {
 	constructor() {
+		super();
 		this.centsOut = document.getElementById('cents');
 		this.noteOut = document.getElementById('note');
 		this.noteNameOut = document.getElementById('note-name');
@@ -145,6 +188,18 @@ class UI {
 		this.lowsOut = [...document.getElementById('err-low').children];
 		this.highsOut.forEach((o, i) => o.style.width = `${i / (this.highsOut.length - 1) * 20 + 80}%`);
 		this.lowsOut.forEach((o, i) => o.style.width = `${i / (this.lowsOut.length - 1) * 20 + 80}%`);
+
+		for (const button of document.getElementsByTagName('button')) {
+			if (button.dataset['note']) {
+				const note = button.dataset['note'];
+				const octave = Number.parseInt(button.dataset['octave'] ?? '4');
+				button.addEventListener('click', () => {
+					this.dispatchEvent(new CustomEvent('playnote', { detail: { note, octave } }));
+				});
+			}
+		}
+
+		this.baseTitle = document.title;
 	}
 
 	showError(cents) {
