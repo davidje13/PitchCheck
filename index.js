@@ -1,7 +1,13 @@
 'use strict';
 
 const posMod = (a, b) => ((a % b) + b) % b;
-const fromDb = (db) => Math.pow(10, db / 10);
+// sound intensity can be considered linear, so we use /10 as our base, not /20 (which would be pressure; non-linear)
+const soundIntensityFromDb = (db) => Math.pow(10, db / 10); // * 1e-12 to scale, but we do not need the scale anywhere
+
+// web audio API does not use a reference intensity, so we must add it ourselves (using 20 micropascals)
+// (being able to get absolute values out depends on the hardware attenuation/gain being known, so this is possibly a lost cause anyway)
+// for this reference we use *20 as our base, not *10, since this is a reference pressure
+const SPL_0DB = 20 * Math.log10(20e-6);
 
 const A4 = 440;
 const NOTES = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
@@ -34,14 +40,27 @@ function getPeakDb(values) {
 		}
 	}
 
-	const l = fromDb(values[peakI - 1] ?? Number.NEGATIVE_INFINITY);
-	const r = fromDb(values[peakI + 1] ?? Number.NEGATIVE_INFINITY);
-	const p = fromDb(peakDb);
+	const l = soundIntensityFromDb(values[peakI - 1] ?? Number.NEGATIVE_INFINITY);
+	const r = soundIntensityFromDb(values[peakI + 1] ?? Number.NEGATIVE_INFINITY);
+	const p = soundIntensityFromDb(peakDb);
 
 	return {
 		i: peakI + (r - l) * 0.5 / (p - Math.min(l, r)),
 		db: peakDb,
+	};
+}
+
+function getTotalDb(values, hzConv) {
+	let sumIntensity = 0;
+	// "Z" weighting
+	const minI = Math.ceil(20 / hzConv);
+	const maxI = Math.min(Math.ceil(20000 / hzConv), values.length);
+	for (let i = minI; i < maxI; ++i) {
+		sumIntensity += soundIntensityFromDb(values[i]);
 	}
+	sumIntensity *= hzConv; // scale integration to 1hz per sample
+
+	return 10 * Math.log10(sumIntensity);
 }
 
 function getTestSource(audioContext) {
@@ -162,7 +181,7 @@ async function run() {
 			ui.showDecibels(null);
 		} else {
 			ui.showNote(peakHz);
-			ui.showDecibels(peak.db);
+			ui.showDecibels(getTotalDb(data, hzConv) - SPL_0DB);
 		}
 		ui.showFrequencyDomain(data, hzConv, minHz, maxHz, minDb, maxDb);
 
