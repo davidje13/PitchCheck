@@ -11,4 +11,8 @@ and the difference from the ideal note (in 10 cent intervals).
 Extracted frequency is accurate to &plusmn;0.05Hz at lowest supported pitch
 (A<sub>1</sub>), and more accurate at higher pitches. Tested with ideal sine waves.
 
-Uses the baseline A<sub>4</sub> = 440Hz
+Uses the baseline A<sub>4</sub> = 440Hz.
+
+Volume is measured using the "Z" weighting and reported in decibels relative to a
+reference pressure of 20 micropascals. Note that the absolute decibel reading may be
+unreliable due to attenutation or gain in the microphone hardware or software.
