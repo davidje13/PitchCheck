@@ -65,6 +65,8 @@ function getTotalDb(values, hzConv) {
 
 function getTestSource(audioContext) {
 	const audioSource = new OscillatorNode(audioContext, { frequency: 1e-2 });
+	const gainNode = new GainNode(audioContext, { gain: 0.125 });
+	audioSource.connect(gainNode);
 	audioSource.start();
 
 	const freqIn = document.createElement('input');
@@ -85,7 +87,7 @@ function getTestSource(audioContext) {
 	});
 	document.body.appendChild(freqIn);
 
-	return audioSource;
+	return gainNode;
 }
 
 const playing = new Set();
