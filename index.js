@@ -65,29 +65,47 @@ function getTotalDb(values, hzConv) {
 
 function getTestSource(audioContext) {
 	const audioSource = new OscillatorNode(audioContext, { frequency: 1e-2 });
-	const gainNode = new GainNode(audioContext, { gain: 0.125 });
-	audioSource.connect(gainNode);
-	audioSource.start();
 
-	const freqIn = document.createElement('input');
-	freqIn.className = 'debugHz';
-	freqIn.setAttribute('title', 'Debug frequency');
-	freqIn.setAttribute('type', 'number');
-	freqIn.setAttribute('min', '0');
-	freqIn.setAttribute('max', '22050');
-	freqIn.setAttribute('step', '0.1');
-	freqIn.setAttribute('value', '0');
-	freqIn.addEventListener('input', () => {
-		const value = Number.parseFloat(freqIn.value);
-		if (Number.isNaN(value) || value <= 0) {
+	const noiseAudioSource = new AudioBufferSourceNode(audioContext);
+	noiseAudioSource.buffer = createWhiteNoise(audioContext);
+	noiseAudioSource.loop = true;
+	const noiseGainNode = new GainNode(audioContext, { gain: 0 });
+	noiseAudioSource.connect(noiseGainNode);
+
+	document.getElementById('debug-controls').hidden = false;
+
+	function listenValue(input, fn) {
+		const handle = () => {
+			let v = Number.parseFloat(input.value);
+			if (Number.isNaN(v)) {
+				v = 0;
+			}
+			fn(v);
+		};
+		input.addEventListener('input', handle);
+		handle();
+	}
+
+	listenValue(document.getElementById('debug-frequency'), (value) => {
+		if (value <= 0) {
 			audioSource.frequency.exponentialRampToValueAtTime(1e-2, audioContext.currentTime + 0.1);
 		} else {
 			audioSource.frequency.exponentialRampToValueAtTime(value, audioContext.currentTime + 0.1);
 		}
 	});
-	document.body.appendChild(freqIn);
 
-	return gainNode;
+	listenValue(document.getElementById('debug-noise'), (value) => {
+		noiseGainNode.gain.linearRampToValueAtTime(value, audioContext.currentTime + 0.1);
+	});
+
+	const combiner = new GainNode(audioContext, { gain: 0.125 });
+	audioSource.connect(combiner);
+	noiseGainNode.connect(combiner);
+
+	audioSource.start();
+	noiseAudioSource.start();
+
+	return combiner;
 }
 
 const playing = new Set();
@@ -95,14 +113,28 @@ const playing = new Set();
 function silenceNotes(audioContext) {
 	const now = audioContext.currentTime;
 	playing.forEach(({ audioSource, gainNode }) => {
-		gainNode.gain.cancelAndHoldAtTime(now);
+		if (gainNode.gain.cancelAndHoldAtTime) {
+			gainNode.gain.cancelAndHoldAtTime(now);
+		} else {
+			// firefox does not support cancelAndHoldAtTime - use a crude approximation reduce the clicking sounds
+			gainNode.gain.setValueAtTime(gainNode.gain.value * 1.15, now); // 1.15 found by experiment to reduce clicking the most (not sure why!)
+		}
 		gainNode.gain.linearRampToValueAtTime(0, now + 0.1);
 		audioSource.stop(now + 0.1);
 	});
 	playing.clear();
 }
 
-function playNote(audioContext, frequency, { fadeIn = 0.02, life = 0.0, fadeOut = 1.0, gain = 1 } = {}) {
+function isPlaying(checkID) {
+	for (const { id } of playing) {
+		if (id === checkID) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function playNote(audioContext, id, frequency, { fadeIn = 0.02, life = 0.0, fadeOut = 1.0, gain = 1 } = {}) {
 	const audioSource = new OscillatorNode(audioContext, { frequency });
 	const gainNode = new GainNode(audioContext, { gain: 0 });
 	audioSource.connect(gainNode);
@@ -118,9 +150,36 @@ function playNote(audioContext, frequency, { fadeIn = 0.02, life = 0.0, fadeOut 
 	audioSource.start(beginTime);
 	audioSource.stop(beginTime + fadeIn + life + fadeOut + 0.02);
 
-	const playingItem = { audioSource, gainNode };
+	const playingItem = { audioSource, gainNode, id };
 	playing.add(playingItem);
 	setTimeout(() => playing.delete(playingItem), (beginTime + fadeIn + life + fadeOut) * 1000);
+}
+
+function createWhiteNoise(audioContext, duration) {
+	const samples = Math.ceil(audioContext.sampleRate * duration);
+	const buffer = audioContext.createBuffer(1, samples, audioContext.sampleRate);
+	const data = buffer.getChannelData(0);
+	for (let i = 0; i < samples; ++i) {
+		data[i] = Math.random() * 2 - 1;
+	}
+	return buffer;
+}
+
+function playNoise(audioContext, id, buffer, { fadeIn = 0.1, gain = 1 } = {}) {
+	const audioSource = new AudioBufferSourceNode(audioContext);
+	audioSource.buffer = buffer;
+	audioSource.loop = true;
+	const gainNode = new GainNode(audioContext, { gain: 0 });
+	audioSource.connect(gainNode);
+	gainNode.connect(audioContext.destination);
+
+	const beginTime = audioContext.currentTime + 0.02;
+	gainNode.gain.setValueAtTime(0, beginTime);
+	gainNode.gain.linearRampToValueAtTime(gain, beginTime + fadeIn);
+
+	audioSource.start(beginTime);
+
+	playing.add({ audioSource, gainNode, id });
 }
 
 async function run() {
@@ -131,11 +190,11 @@ async function run() {
 
 	const ui = new UI();
 
-	let pendingNoteEvent = null;
+	let pendingPlayEvent = null;
 	const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
 		.catch(() => new Promise((resolve) => {
-			ui.addEventListener('playnote', (e) => {
-				pendingNoteEvent = e;
+			ui.addEventListener('playsound', (e) => {
+				pendingPlayEvent = e;
 				resolve(null);
 			}, { once: true });
 		}));
@@ -148,17 +207,36 @@ async function run() {
 		? new MediaStreamAudioSourceNode(audioContext, { mediaStream })
 		: getTestSource(audioContext);
 
-	function handlePlayNote(e) {
+	const whiteNoise = createWhiteNoise(audioContext, 10);
+
+	function handlePlay(e) {
+		if (e.detail.toggle && isPlaying(e.detail.id)) {
+			silenceNotes(audioContext);
+			return;
+		}
 		silenceNotes(audioContext);
-		playNote(
-			audioContext,
-			noteToHz(e.detail.note, e.detail.octave),
-			{ fadeIn: 0.05, life: 5.0, fadeOut: 8.0, gain: 0.8 },
-		);
+		switch (e.detail.type) {
+			case 'note':
+				playNote(
+					audioContext,
+					e.detail.id,
+					noteToHz(e.detail.note, e.detail.octave),
+					{ fadeIn: 0.05, life: 5.0, fadeOut: 8.0, gain: 0.8 },
+				);
+				break;
+			case 'noise':
+				playNoise(
+					audioContext,
+					e.detail.id,
+					whiteNoise,
+					{ fadeIn: 0.3, gain: 0.4 },
+				);
+				break;
+		}
 	}
-	ui.addEventListener('playnote', handlePlayNote);
-	if (pendingNoteEvent) {
-		handlePlayNote(pendingNoteEvent);
+	ui.addEventListener('playsound', handlePlay);
+	if (pendingPlayEvent) {
+		handlePlay(pendingPlayEvent);
 	}
 
 	const analyserNode = new AnalyserNode(audioContext, {
@@ -215,7 +293,23 @@ class UI extends EventTarget {
 				const note = button.dataset['note'];
 				const octave = Number.parseInt(button.dataset['octave'] ?? '4');
 				button.addEventListener('click', () => {
-					this.dispatchEvent(new CustomEvent('playnote', { detail: { note, octave } }));
+					this.dispatchEvent(new CustomEvent('playsound', { detail: {
+						type: 'note',
+						id: note + octave,
+						toggle: false,
+						note,
+						octave,
+					} }));
+				});
+			} else if (button.dataset['noise']) {
+				const noise = button.dataset['noise'];
+				button.addEventListener('click', () => {
+					this.dispatchEvent(new CustomEvent('playsound', { detail: {
+						type: 'noise',
+						id: noise,
+						toggle: true,
+						noise,
+					} }));
 				});
 			}
 		}

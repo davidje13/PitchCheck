@@ -122,7 +122,7 @@ h1 {
 .tuning {
 	margin: 24px 0 0;
 	display: grid;
-	grid-template: repeat(2, 24px) / repeat(6, 1fr);
+	grid-template-columns: repeat(6, 24px);
 	gap: 4px;
 	position: relative;
 }
@@ -136,10 +136,23 @@ h1 {
 	transform: scale(1, 2);
 }
 
-.tuning button {
+.samples {
+	margin: 8px 0 0;
+	display: flex;
+	gap: 4px;
+	position: relative;
+}
+
+button {
+	display: block;
+	box-sizing: border-box;
+	width: 24px;
+	height: 24px;
+	line-height: 22px;
+	text-align: center;
 	user-select: none;
 	margin: 0;
-	padding: 0 4px;
+	padding: 0;
 	background: linear-gradient(to bottom, #222222, #111111);
 	color: #BBBBBB;
 	border: 1px solid #555555;
@@ -148,17 +161,27 @@ h1 {
 	cursor: pointer;
 	font: 0.8em sans-serif;
 }
-.tuning button sup {
+button sup {
 	font-size: 0.5em;
 	vertical-align: top;
 }
 
-.tuning button:focus:not(:active) {
+button:focus:not(:active) {
 	border-color: #CCCCCC;
 }
-.tuning button:active {
+button:active {
 	background: linear-gradient(to bottom, #111111, #222222);
 	border-top-color: #666666;
+}
+
+.noise::before {
+	content: "\25CF";
+	font-size: 2em;
+	line-height: 22px;
+}
+
+.noise.white::before {
+	color: #CCCCCC;
 }
 
 .details {
@@ -212,7 +235,7 @@ footer a:link, footer a:visited {
 	opacity: 0.8;
 }
 
-.debugHz {
+#debug-controls {
 	position: absolute;
 	top: 8px;
 	left: 8px;
