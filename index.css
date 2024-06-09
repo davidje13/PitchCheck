@@ -180,9 +180,9 @@ button:active {
 	line-height: 22px;
 }
 
-.noise.white::before {
-	color: #CCCCCC;
-}
+.noise.white::before { color: #CCCCCC; }
+.noise.pink::before { color: #EE8888; }
+.noise.red::before { color: #DD4444; }
 
 .details {
 	width: 100%;

@@ -67,7 +67,9 @@ function getTestSource(audioContext) {
 	const audioSource = new OscillatorNode(audioContext, { frequency: 1e-2 });
 
 	const noiseAudioSource = new AudioBufferSourceNode(audioContext);
-	noiseAudioSource.buffer = createWhiteNoise(audioContext);
+	//noiseAudioSource.buffer = createBrownianNoise(audioContext, 10, { leak: 0.001, limit: 100.0, loopFriendly: true });
+	//noiseAudioSource.buffer = createBrownianNoise(audioContext, 1, { leak: 0.5, limit: 100.0, loopFriendly: true });
+	noiseAudioSource.buffer = createWhiteNoise(audioContext, 1);
 	noiseAudioSource.loop = true;
 	const noiseGainNode = new GainNode(audioContext, { gain: 0 });
 	noiseAudioSource.connect(noiseGainNode);
@@ -108,33 +110,8 @@ function getTestSource(audioContext) {
 	return combiner;
 }
 
-const playing = new Set();
-
-function silenceNotes(audioContext) {
-	const now = audioContext.currentTime;
-	playing.forEach(({ audioSource, gainNode }) => {
-		if (gainNode.gain.cancelAndHoldAtTime) {
-			gainNode.gain.cancelAndHoldAtTime(now);
-		} else {
-			// firefox does not support cancelAndHoldAtTime - use a crude approximation reduce the clicking sounds
-			gainNode.gain.setValueAtTime(gainNode.gain.value * 1.15, now); // 1.15 found by experiment to reduce clicking the most (not sure why!)
-		}
-		gainNode.gain.linearRampToValueAtTime(0, now + 0.1);
-		audioSource.stop(now + 0.1);
-	});
-	playing.clear();
-}
-
-function isPlaying(checkID) {
-	for (const { id } of playing) {
-		if (id === checkID) {
-			return true;
-		}
-	}
-	return false;
-}
-
-function playNote(audioContext, id, frequency, { fadeIn = 0.02, life = 0.0, fadeOut = 1.0, gain = 1 } = {}) {
+function playNote(samplePlayer, id, frequency, { fadeIn = 0.02, life = 0.0, fadeOut = 1.0, gain = 1 } = {}) {
+	const audioContext = samplePlayer.audioContext;
 	const audioSource = new OscillatorNode(audioContext, { frequency });
 	const gainNode = new GainNode(audioContext, { gain: 0 });
 	audioSource.connect(gainNode);
@@ -147,25 +124,11 @@ function playNote(audioContext, id, frequency, { fadeIn = 0.02, life = 0.0, fade
 	gainNode.gain.exponentialRampToValueAtTime(gain * 1e-4, beginTime + fadeIn + life + fadeOut);
 	gainNode.gain.linearRampToValueAtTime(0, beginTime + fadeIn + life + fadeOut + 0.02);
 
-	audioSource.start(beginTime);
-	audioSource.stop(beginTime + fadeIn + life + fadeOut + 0.02);
-
-	const playingItem = { audioSource, gainNode, id };
-	playing.add(playingItem);
-	setTimeout(() => playing.delete(playingItem), (beginTime + fadeIn + life + fadeOut) * 1000);
+	samplePlayer.play(id, audioSource, gainNode, beginTime, fadeIn + life + fadeOut);
 }
 
-function createWhiteNoise(audioContext, duration) {
-	const samples = Math.ceil(audioContext.sampleRate * duration);
-	const buffer = audioContext.createBuffer(1, samples, audioContext.sampleRate);
-	const data = buffer.getChannelData(0);
-	for (let i = 0; i < samples; ++i) {
-		data[i] = Math.random() * 2 - 1;
-	}
-	return buffer;
-}
-
-function playNoise(audioContext, id, buffer, { fadeIn = 0.1, gain = 1 } = {}) {
+function playNoise(samplePlayer, id, buffer, { fadeIn = 0.1, gain = 1 } = {}) {
+	const audioContext = samplePlayer.audioContext;
 	const audioSource = new AudioBufferSourceNode(audioContext);
 	audioSource.buffer = buffer;
 	audioSource.loop = true;
@@ -177,9 +140,7 @@ function playNoise(audioContext, id, buffer, { fadeIn = 0.1, gain = 1 } = {}) {
 	gainNode.gain.setValueAtTime(0, beginTime);
 	gainNode.gain.linearRampToValueAtTime(gain, beginTime + fadeIn);
 
-	audioSource.start(beginTime);
-
-	playing.add({ audioSource, gainNode, id });
+	samplePlayer.play(id, audioSource, gainNode, beginTime);
 }
 
 async function run() {
@@ -203,22 +164,28 @@ async function run() {
 		sampleRate: 44100,
 	});
 
+	const samplePlayer = new SamplePlayer(audioContext);
+
 	const audioSource = mediaStream
 		? new MediaStreamAudioSourceNode(audioContext, { mediaStream })
 		: getTestSource(audioContext);
 
-	const whiteNoise = createWhiteNoise(audioContext, 10);
+	const noise = new Map([
+		['white', createWhiteNoise(audioContext, 10)],
+		['pink', createBrownianNoise(audioContext, 10, { leak: 0.5, limit: 100.0, loopFriendly: true, gain: 0.75 })], // leak = 0.5 => 50% mix of white+red noise (TODO: is this correct for pink noise?)
+		['red', createBrownianNoise(audioContext, 10, { leak: 0.001, limit: 100.0, loopFriendly: true, gain: 0.5 })],
+	]);
 
 	function handlePlay(e) {
-		if (e.detail.toggle && isPlaying(e.detail.id)) {
-			silenceNotes(audioContext);
+		if (e.detail.toggle && samplePlayer.isPlaying(e.detail.id)) {
+			samplePlayer.silenceNotes();
 			return;
 		}
-		silenceNotes(audioContext);
+		samplePlayer.silenceNotes();
 		switch (e.detail.type) {
 			case 'note':
 				playNote(
-					audioContext,
+					samplePlayer,
 					e.detail.id,
 					noteToHz(e.detail.note, e.detail.octave),
 					{ fadeIn: 0.05, life: 5.0, fadeOut: 8.0, gain: 0.8 },
@@ -226,10 +193,10 @@ async function run() {
 				break;
 			case 'noise':
 				playNoise(
-					audioContext,
+					samplePlayer,
 					e.detail.id,
-					whiteNoise,
-					{ fadeIn: 0.3, gain: 0.4 },
+					noise.get(e.detail.noise),
+					{ fadeIn: 0.3, gain: 0.3 },
 				);
 				break;
 		}
