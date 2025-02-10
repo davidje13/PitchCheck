@@ -159,9 +159,10 @@ async function run() {
 				resolve(null);
 			}, { once: true });
 		}));
+	console.log('sample rate', mediaStream.sampleRate);
 	const audioContext = new AudioContext({
 		latencyHint: 'playback',
-		sampleRate: 44100,
+		sampleRate: mediaStream.sampleRate, // FireFox does not support mixing sample rates
 	});
 
 	const samplePlayer = new SamplePlayer(audioContext);
